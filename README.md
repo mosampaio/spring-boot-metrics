@@ -21,4 +21,4 @@ A basic example of usage of Spring boot with Dropwizard metrics.
    $ ./gradlew bootRun
    ```
 
-1. Check it out at [http://localhost:8080](http://localhost:8080).
+1. Check it out at [http://localhost:8080](http://localhost:8080) and [http://localhost:8080/metrics/admin](http://localhost:8080/metrics/admin).
