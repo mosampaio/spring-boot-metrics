@@ -1,10 +1,22 @@
 package mosampaio;
 
-import com.codahale.metrics.ConsoleReporter;
-import com.codahale.metrics.JmxReporter;
-import com.codahale.metrics.Metric;
-import com.codahale.metrics.MetricRegistry;
-import com.codahale.metrics.MetricSet;
+import static com.codahale.metrics.MetricRegistry.name;
+import static java.util.concurrent.TimeUnit.SECONDS;
+
+import java.lang.management.ManagementFactory;
+import java.util.Map;
+
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.boot.web.servlet.ServletRegistrationBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import com.amazonaws.regions.Region;
+import com.amazonaws.regions.Regions;
+import com.amazonaws.services.cloudwatch.AmazonCloudWatchAsync;
+import com.amazonaws.services.cloudwatch.AmazonCloudWatchAsyncClient;
+import com.blacklocus.metrics.CloudWatchReporter;
+import com.codahale.metrics.*;
 import com.codahale.metrics.jvm.BufferPoolMetricSet;
 import com.codahale.metrics.jvm.GarbageCollectorMetricSet;
 import com.codahale.metrics.jvm.MemoryUsageGaugeSet;
@@ -15,16 +27,6 @@ import com.codahale.metrics.servlets.AdminServlet;
 import com.ryantenney.metrics.spring.config.annotation.EnableMetrics;
 import com.ryantenney.metrics.spring.config.annotation.MetricsConfigurerAdapter;
 import com.ryantenney.metrics.spring.servlets.MetricsServletsContextListener;
-import org.springframework.boot.web.servlet.FilterRegistrationBean;
-import org.springframework.boot.web.servlet.ServletRegistrationBean;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
-import java.lang.management.ManagementFactory;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
-
-import static com.codahale.metrics.MetricRegistry.name;
 
 @Configuration
 @EnableMetrics
@@ -32,21 +34,23 @@ public class SpringConfig extends MetricsConfigurerAdapter {
 
     @Override
     public void configureReporters(MetricRegistry metricRegistry) {
-        registerReporter(ConsoleReporter
-                .forRegistry(metricRegistry)
-                .build())
-                .start(30, TimeUnit.SECONDS);
+        registerReporter(JmxReporter.forRegistry(metricRegistry).build()).start();
+        registerReporter(ConsoleReporter.forRegistry(metricRegistry).build()).start(30, SECONDS);
 
-        registerReporter(JmxReporter.
-                forRegistry(metricRegistry)
-                .build())
-                .start();
-
+        registerReporter(buildCloudWatchReporter(metricRegistry)).start(15, SECONDS);
 
         registerAll("gc", new GarbageCollectorMetricSet(), metricRegistry);
         registerAll("memory", new MemoryUsageGaugeSet(), metricRegistry);
         registerAll("threads", new ThreadStatesGaugeSet(), metricRegistry);
         registerAll("buffers", new BufferPoolMetricSet(ManagementFactory.getPlatformMBeanServer()), metricRegistry);
+    }
+
+
+    private CloudWatchReporter buildCloudWatchReporter(MetricRegistry metricRegistry) {
+        AmazonCloudWatchAsync amazonCloudWatchAsync = new AmazonCloudWatchAsyncClient();
+        amazonCloudWatchAsync.setRegion(Region.getRegion(Regions.AP_SOUTHEAST_2));
+
+        return new CloudWatchReporter(metricRegistry, "DEV.MyQueryService", amazonCloudWatchAsync);
     }
 
     private void registerAll(String prefix, MetricSet metrics, MetricRegistry metricRegistry) throws IllegalArgumentException {
@@ -60,8 +64,8 @@ public class SpringConfig extends MetricsConfigurerAdapter {
     }
 
     @Bean
-    public ServletRegistrationBean servletRegistrationBean(){
-        return new ServletRegistrationBean(new AdminServlet(),"/metrics/admin/*");
+    public ServletRegistrationBean servletRegistrationBean() {
+        return new ServletRegistrationBean(new AdminServlet(), "/metrics/admin/*");
     }
 
     @Bean
